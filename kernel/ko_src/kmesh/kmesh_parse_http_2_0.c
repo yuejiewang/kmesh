@@ -1036,6 +1036,8 @@ ssize_t inflate_hd_block(hd_inflater* inflater, const u8 *in,
 		node->value.ptr = nv.value->base;
 		node->value.size = nv.value->len;
 		(void)strncpy(node->keystring, nv.name->base, nv.name->len);
+    if (!kmesh_protocol_data_insert(node))
+      delete_kmesh_data_node(&node);
 
     if (inflate_flags & HD_INFLATE_FINAL) {
       hd_inflate_keep_free(inflater);
