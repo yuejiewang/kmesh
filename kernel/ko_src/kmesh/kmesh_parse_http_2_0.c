@@ -7,7 +7,12 @@ u32 parse_http_2_0_request(const struct bpf_mem_ptr *msg) {
     DEBUGF("hd_inflate_init failed with error: %d\n", rv_inflater);
     return 1;
   }
-  return kmesh_parse_recv(inflater, msg->ptr, msg->size);
+
+  u32 ret = 0;
+  SET_RET_PROTO_TYPE(ret, PROTO_HTTP_2_0);
+  SET_RET_MSG_TYPE(ret, msg->ptr[3]);
+  kmesh_parse_recv(inflater, msg->ptr, msg->size);
+  return ret;
 }
 
 u32 parse_http_2_0_response(const struct bpf_mem_ptr *msg) {
@@ -17,7 +22,12 @@ u32 parse_http_2_0_response(const struct bpf_mem_ptr *msg) {
     DEBUGF("hd_inflate_init failed with error: %d\n", rv_inflater);
     return 1;
   }
-  return kmesh_parse_recv(inflater, msg->ptr, msg->size);
+
+  u32 ret = 0;
+  SET_RET_PROTO_TYPE(ret, PROTO_HTTP_2_0);
+  SET_RET_MSG_TYPE(ret, msg->ptr[3]);
+  kmesh_parse_recv(inflater, msg->ptr, msg->size);
+  return ret;
 }
 
 static struct msg_protocol http_2_0_request = {
@@ -1111,6 +1121,28 @@ int kmesh_parse_recv(hd_inflater* inflater, const u8 *in, size_t inlen) {
       hd->flags = in[4];
       hd->stream_id = get_uint32(&in[5]) & STREAM_ID_MASK;
       hd->reserved = 0;
+
+      /* insert frame header info into rbtree */
+      kmesh_data_node *node_type = new_kmesh_data_node(6);
+      node_type->value.ptr = &(hd->type);
+      node_type->value.size = 1;
+      (void)strncpy(node_type->keystring, "_TYPE", 6);
+      if (!kmesh_protocol_data_insert(node_type))
+        delete_kmesh_data_node(&node_type);
+        
+      kmesh_data_node *node_flags = new_kmesh_data_node(7);
+      node_flags->value.ptr = &(hd->flags);
+      node_flags->value.size = 1;
+      (void)strncpy(node_flags->keystring, "_FLAGS", 7);
+      if (!kmesh_protocol_data_insert(node_flags))
+        delete_kmesh_data_node(&node_flags);
+
+      kmesh_data_node *node_stream_id = new_kmesh_data_node(11);    
+      node_stream_id->value.ptr = &(hd->stream_id);
+      node_stream_id->value.size = 4;
+      (void)strncpy(node_stream_id->keystring, "_STREAM_ID", 11);
+      if (!kmesh_protocol_data_insert(node_stream_id))
+        delete_kmesh_data_node(&node_stream_id);
 
       in += FRAME_HDLEN;
 
