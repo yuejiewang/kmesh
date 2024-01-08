@@ -1,4 +1,5 @@
 #include "kmesh_parse_http_2_0.h"
+#include "huffman.h"
 
 u32 parse_http_2_0_request(const struct bpf_mem_ptr *msg) {
   return 1;
@@ -21,7 +22,7 @@ static void register_http_2_0_request(void)
 	list_add_tail(&http_2_0_request.list, &g_protocol_list_head);
 }
 
-static void register_http_2_0_reponse(void)
+static void register_http_2_0_response(void)
 {
 	list_add_tail(&http_2_0_response.list, &g_protocol_list_head);
 }
@@ -29,7 +30,7 @@ static void register_http_2_0_reponse(void)
 int __init kmesh_register_http_2_0_init(void)
 {
 	register_http_2_0_request();
-	register_http_2_0_repose();
+	register_http_2_0_response();
 
 	return 0;
 }

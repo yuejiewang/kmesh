@@ -2,7 +2,35 @@
 #define KMESH_REGISTER_HTTP_2_0_H
 
 #include "kmesh_parse_protocol_data.h"
-#include "huffman.h"
+// #include "huffman.h"
+
+#define HD_ENTRY_OVERHEAD 32
+#define HD_MAP_SIZE 128
+
+#define INDEX_RANGE_VALID(context, idx)                                        \
+  ((idx) < (context)->hd_table.len + STATIC_TABLE_LENGTH)
+
+#define FRAME_HDLEN 9
+
+#define CLIENT_MAGIC "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+#define CLIENT_MAGIC_LEN 24
+
+/* The number of bytes for each SETTINGS entry */
+#define FRAME_SETTINGS_ENTRY_LENGTH 6
+
+/* Length of priority related fields in HEADERS/PRIORITY frames */
+#define PRIORITY_SPECLEN 5
+
+#define STREAM_ID_MASK ((1u << 31) - 1)
+#define PRI_GROUP_ID_MASK ((1u << 31) - 1)
+#define PRIORITY_MASK ((1u << 31) - 1)
+#define WINDOW_SIZE_INCREMENT_MASK ((1u << 31) - 1)
+#define SETTINGS_ID_MASK ((1 << 24) - 1)
+
+u32 parse_http_2_0_request(const struct bpf_mem_ptr *msg);
+u32 parse_http_2_0_response(const struct bpf_mem_ptr *msg);
+
+int __init kmesh_register_http_2_0_init(void);
 
 typedef struct
 {
@@ -32,33 +60,53 @@ typedef struct {
   u8 flags;
 } nv;  // nghttp2.h
 
-#define HD_ENTRY_OVERHEAD 32
-#define HD_MAP_SIZE 128
+/* The entry used for static header table. */
+typedef struct {
+  rcbuf name;
+  rcbuf value;
+  nv cnv;
+  int32_t token;
+  uint32_t hash;
+} hd_static_entry;
 
-#define INDEX_RANGE_VALID(context, idx)                                        \
-  ((idx) < (context)->hd_table.len + STATIC_TABLE_LENGTH)
+typedef struct {
+  rcbuf *name;
+  rcbuf *value;
+  int32_t token;
+  uint8_t flags;
+} hd_nv;
 
-#define FRAME_HDLEN 9
-
-#define CLIENT_MAGIC "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
-#define CLIENT_MAGIC_LEN 24
-
-/* The number of bytes for each SETTINGS entry */
-#define FRAME_SETTINGS_ENTRY_LENGTH 6
-
-/* Length of priority related fields in HEADERS/PRIORITY frames */
-#define PRIORITY_SPECLEN 5
-
-#define STREAM_ID_MASK ((1u << 31) - 1)
-#define PRI_GROUP_ID_MASK ((1u << 31) - 1)
-#define PRIORITY_MASK ((1u << 31) - 1)
-#define WINDOW_SIZE_INCREMENT_MASK ((1u << 31) - 1)
-#define SETTINGS_ID_MASK ((1 << 24) - 1)
-
-u32 parse_http_2_0_request(const struct bpf_mem_ptr *msg);
-u32 parse_http_2_0_response(const struct bpf_mem_ptr *msg);
-
-int __init kmesh_register_http_2_0_init(void);
+typedef struct {
+  hd_context ctx;
+  /* Stores current state of huffman decoding */
+  hd_huff_decode_context huff_decode_ctx;
+  /* header buffer */
+  buf namebuf, valuebuf;
+  rcbuf *namercbuf, *valuercbuf;
+  /* Pointer to the name/value pair which are used in the current
+     header emission. */
+  rcbuf *nv_name_keep, *nv_value_keep;
+  /* The number of bytes to read */
+  size_t left;
+  /* The index in indexed repr or indexed name */
+  size_t index;
+  /* The maximum header table size the inflater supports. This is the
+     same value transmitted in SETTINGS_HEADER_TABLE_SIZE */
+  size_t settings_hd_table_bufsize_max;
+  /* Minimum header table size set by hd_inflate_change_table_size */
+  size_t min_hd_table_bufsize_max;
+  /* The number of next shift to decode integer */
+  size_t shift;
+  hd_opcode opcode;
+  hd_inflate_state state;
+  /* nonzero if string is huffman encoded */
+  uint8_t huffman_encoded;
+  /* nonzero if deflater requires that current entry is indexed */
+  uint8_t index_required;
+  /* nonzero if deflater requires that current entry must not be
+     indexed */
+  uint8_t no_index;
+} hd_inflater;
 
 /* Make scalar initialization form of hd_entry */
 #define MAKE_STATIC_ENT(N, V, T, H)                                            \
@@ -198,9 +246,5 @@ typedef enum {
 int kmesh_parse_recv(hd_inflater* inflater, const uint8_t *in, size_t inlen);
 
 int hd_inflate_new(hd_inflater **inflater_ptr, void *mem_user_data);
-
-static inline int memeq(const void *s1, const void *s2, size_t n);
-
-static int32_t lookup_token(const uint8_t *name, size_t namelen);
 
 #endif /* KMESH_REGISTER_HTTP_2_0_H */

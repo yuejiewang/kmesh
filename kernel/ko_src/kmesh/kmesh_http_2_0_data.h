@@ -4,7 +4,7 @@
 /* FIXME:
  * remove header files
  * fix int types
- */
+ */ 
 #include <stdint.h>
 #define u32 uint32_t
 #define u16 uint16_t
@@ -12,21 +12,23 @@
 #define ssize_t int32_t
 #define size_t uint32_t
 
+// #include <linux/types.h>
+
 typedef struct {
   /* This points to the beginning of the buffer. The effective range
      of buffer is [begin, end). */
-  uint8_t *begin;
+  u8 *begin;
   /* This points to the memory one byte beyond the end of the
      buffer. */
-  uint8_t *end;
+  u8 *end;
   /* The position indicator for effective start of the buffer. pos <=
      last must be hold. */
-  uint8_t *pos;
+  u8 *pos;
   /* The position indicator for effective one beyond of the end of the
      buffer. last <= end must be hold. */
-  uint8_t *last;
+  u8 *last;
   /* Mark arbitrary position in buffer [begin, end) */
-  uint8_t *mark;
+  u8 *mark;
 } buf;  // nghttp2_buf.h
 
 /* Chains 2 buffers */
