@@ -8,9 +8,10 @@
 # Create: 2022-08-24
 
 obj-m := kmesh.o
-kmesh-objs = kmesh_main.o defer_connect.o \
+kmesh-objs = kmesh_main.o defer_connect.o huffman.o \
 	kmesh_parse_protocol_data.o \
-	kmesh_parse_http_1_1.o
+	kmesh_parse_http_1_1.o \
+	kmesh_parse_http_2_0.o
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)

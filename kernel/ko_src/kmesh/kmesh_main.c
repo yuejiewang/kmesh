@@ -20,6 +20,7 @@
 #include "defer_connect.h"
 #include "kmesh_parse_protocol_data.h"
 #include "kmesh_parse_http_1_1.h"
+#include "kmesh_parse_http_2_0.h"
 
 static int __init kmesh_init(void)
 {
@@ -34,6 +35,10 @@ static int __init kmesh_init(void)
 		return ret;
 
 	ret = kmesh_register_http_1_1_init();
+	if (ret)
+		return ret;
+
+	ret = kmesh_register_http_2_0_init();
 	return ret;
 }
 
