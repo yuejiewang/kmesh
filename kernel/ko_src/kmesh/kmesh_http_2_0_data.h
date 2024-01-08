@@ -1,18 +1,7 @@
 #ifndef KMESH_HTTP_2_0_DATA_H
 #define KMESH_HTTP_2_0_DATA_H
 
-/* FIXME:
- * remove header files
- * fix int types
- */ 
-#include <stdint.h>
-#define u32 uint32_t
-#define u16 uint16_t
-#define u8 uint8_t
-#define ssize_t int32_t
-#define size_t uint32_t
-
-// #include <linux/types.h>
+#include <linux/types.h>
 
 typedef struct {
   /* This points to the beginning of the buffer. The effective range
@@ -45,8 +34,6 @@ typedef struct {
   buf_chain *head;
   /* Buffer pointer where write occurs. */
   buf_chain *cur;
-  /* Memory allocator */
-  void *mem_user_data;
   /* The buffer capacity of each buf.  This field may be 0 if
      bufs is initialized by bufs_wrap_init* family
      functions. */
