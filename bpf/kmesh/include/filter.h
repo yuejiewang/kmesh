@@ -27,6 +27,13 @@
 #include "filter/tcp_proxy.pb-c.h"
 #include "filter/http_connection_manager.pb-c.h"
 
+/* add a map for stream_id -> endpoint */
+// struct {
+// 	__uint(type, BPF_MAP_TYPE_HASH);
+// 	__uint(key_size, sizeof(int));  // stream_id
+// 	__uint(value_size, sizeof(struct cluster_endpoints));  // endpoint
+// 	__uint(max_entries, 1);
+// } map_of_router_config SEC(".maps");
 
 static inline int filter_match_check(const Listener__Filter *filter, const address_t *addr, const ctx_buff_t *ctx)
 {
@@ -142,19 +149,33 @@ int filter_manager(ctx_buff_t *ctx)
 	switch (filter->config_type_case) {
 #ifndef CGROUP_SOCK_MANAGE
 		case LISTENER__FILTER__CONFIG_TYPE_HTTP_CONNECTION_MANAGER:
-			http_conn = kmesh_get_ptr_val(filter->http_connection_manager);
+			/* match and handle MAGIC string */
+			
 			ret = bpf_parse_header_msg(ctx_val->msg);
-			if (GET_RET_PROTO_TYPE(ret) != PROTO_HTTP_1_1) {
-				BPF_LOG(DEBUG, FILTER, "http filter manager,only support http1.1 this version");
-				break;
-			}
 
-			if (!http_conn) {
-				BPF_LOG(ERR, FILTER, "get http_conn failed\n");
-				ret = -1;
+			if (GET_RET_PROTO_TYPE(ret) == PROTO_HTTP_1_1) {
+				http_conn = kmesh_get_ptr_val(filter->http_connection_manager);
+				
+				if (!http_conn) {
+					BPF_LOG(ERR, FILTER, "get http_conn failed\n");
+					ret = -1;
+					break;
+				}
+				ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
+			} else if (GET_RET_PROTO_TYPE(ret) == PROTO_HTTP_2_0) {
+				http_conn = kmesh_get_ptr_val(filter->http_connection_manager);
+				
+				if (!http_conn) {
+					BPF_LOG(ERR, FILTER, "get http_conn failed\n");
+					ret = -1;
+					break;
+				}
+				ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
+			} else {
+				BPF_LOG(DEBUG, FILTER, "http filter manager, only support http1.1/http2.0 this version");
 				break;
 			}
-			ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
+			
 			break;
 #endif
 		case LISTENER__FILTER__CONFIG_TYPE_TCP_PROXY:
