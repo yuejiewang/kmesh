@@ -1,12 +1,22 @@
 #include "kmesh_parse_http_2_0.h"
 
-u32 parse_http_2_0_request(hd_inflater *inflater,
-                           const struct bpf_mem_ptr *msg) {
+u32 parse_http_2_0_request(const struct bpf_mem_ptr *msg) {
+	hd_inflater *inflater;
+	int rv_inflater = hd_inflate_new(&inflater);
+  if (rv_inflater != 0) {
+    DEBUGF("hd_inflate_init failed with error: %d\n", rv_inflater);
+    return 1;
+  }
   return kmesh_parse_recv(inflater, msg->ptr, msg->size);
 }
 
-u32 parse_http_2_0_response(hd_inflater *inflater,
-                            const struct bpf_mem_ptr *msg) {
+u32 parse_http_2_0_response(const struct bpf_mem_ptr *msg) {
+  hd_inflater *inflater;
+	int rv_inflater = hd_inflate_new(&inflater);
+  if (rv_inflater != 0) {
+    DEBUGF("hd_inflate_init failed with error: %d\n", rv_inflater);
+    return 1;
+  }
   return kmesh_parse_recv(inflater, msg->ptr, msg->size);
 }
 
@@ -36,42 +46,42 @@ int __init kmesh_register_http_2_0_init(void)
 	return 0;
 }
 
-static inline uint16_t get_uint16(const uint8_t *data) {
-  uint16_t n;
-  memcpy(&n, data, sizeof(uint16_t));
+static inline u16 get_uint16(const u8 *data) {
+  u16 n;
+  memcpy(&n, data, sizeof(u16));
   return ntohs(n);
 }
 
-static inline uint32_t get_uint32(const uint8_t *data) {
-  uint32_t n;
-  memcpy(&n, data, sizeof(uint32_t));
+static inline u32 get_uint32(const u8 *data) {
+  u32 n;
+  memcpy(&n, data, sizeof(u32));
   return ntohl(n);
 }
 
 static inline void *default_malloc(size_t size) {
-  return kmalloc(size);
+  return kmalloc(size, GFP_KERNEL);
 }
 
 static inline void default_free(void *ptr) {
-  kvfree(ptr);
+  kfree(ptr);
 }
 
 static inline void *default_calloc(size_t nmemb, size_t size) {
-  return kcalloc(nmemb, size);
+  return kcalloc(nmemb, size, GFP_KERNEL);
 }
 
 static inline void *default_realloc(void *ptr, size_t size) {
-  return krealloc(ptr, size);
+  return krealloc(ptr, size, GFP_KERNEL);
 }
 
 /*
  * Frees |rcbuf| itself, regardless of its reference cout.
  */
-static inline void rcbuf_del(rcbuf *rcbuf) {
-  default_free(rcbuf, rcbuf->base);
+inline void rcbuf_del(rcbuf *rcbuf) {
+  default_free(rcbuf);
 }
 
-static inline void rcbuf_incref(rcbuf *rcbuf) {
+inline void rcbuf_incref(rcbuf *rcbuf) {
   if (rcbuf->ref == -1) {
     return;
   }
@@ -79,19 +89,22 @@ static inline void rcbuf_incref(rcbuf *rcbuf) {
   ++rcbuf->ref;
 }
 
-static inline void rcbuf_decref(rcbuf *rcbuf) {
+inline void rcbuf_decref(rcbuf *rcbuf) {
   if (rcbuf == NULL || rcbuf->ref == -1) {
     return;
   }
 
-  assert(rcbuf->ref > 0);
+  // assert(rcbuf->ref > 0);
+	if (rcbuf->ref <= 0) {
+		DEBUGF("\tWARN: rcbuf reference count <= 0\n");
+	}
 
   if (--rcbuf->ref == 0) {
     rcbuf_del(rcbuf);
   }
 }
 
-static inline void buf_init(buf *buf) {
+inline void buf_init(buf *buf) {
   buf->begin = NULL;
   buf->end = NULL;
   buf->pos = NULL;
@@ -99,13 +112,13 @@ static inline void buf_init(buf *buf) {
   buf->mark = NULL;
 }
 
-static inline int buf_init2(buf *buf, size_t initial) {
+inline int buf_init2(buf *buf, size_t initial) {
   buf_init(buf);
   return buf_reserve(buf, initial);
 }
 
-static inline int buf_reserve(buf *buf, size_t new_cap) {
-  uint8_t *ptr;
+inline int buf_reserve(buf *buf, size_t new_cap) {
+  u8 *ptr;
   size_t cap;
 
   cap = buf_cap(buf);
@@ -131,14 +144,14 @@ static inline int buf_reserve(buf *buf, size_t new_cap) {
   return 0;
 }
 
-static inline void buf_wrap_init(buf *buf, uint8_t *begin, size_t len) {
+inline void buf_wrap_init(buf *buf, u8 *begin, size_t len) {
   buf->begin = buf->pos = buf->last = buf->mark = buf->end = begin;
   if (len) {
     buf->end += len;
   }
 }
 
-static inline int buf_chain_new(buf_chain **chain, size_t chunk_length) {
+inline int buf_chain_new(buf_chain **chain, size_t chunk_length) {
   int rv;
 
   *chain = default_malloc(sizeof(buf_chain));
@@ -158,7 +171,7 @@ static inline int buf_chain_new(buf_chain **chain, size_t chunk_length) {
   return 0;
 }
 
-static inline int bufs_alloc_chain(bufs *bufs) {
+inline int bufs_alloc_chain(bufs *bufs) {
   int rv;
   buf_chain *chain;
 
@@ -190,7 +203,7 @@ static inline int bufs_alloc_chain(bufs *bufs) {
   return 0;
 }
 
-static inline int bufs_ensure_addb(bufs *bufs) {
+inline int bufs_ensure_addb(bufs *bufs) {
   int rv;
   buf *buf;
 
@@ -208,7 +221,7 @@ static inline int bufs_ensure_addb(bufs *bufs) {
   return 0;
 }
 
-int bufs_addb(bufs *bufs, uint8_t b) {
+int bufs_addb(bufs *bufs, u8 b) {
   int rv;
 
   rv = bufs_ensure_addb(bufs);
@@ -219,42 +232,6 @@ int bufs_addb(bufs *bufs, uint8_t b) {
   *bufs->cur->buf.last++ = b;
 
   return 0;
-}
-
-ssize_t hd_huff_decode(hd_huff_decode_context *ctx,
-                       buf *buf, const uint8_t *src,
-                       size_t srclen, int final) {
-  const uint8_t *end = src + srclen;
-  huff_decode node = {ctx->fstate, 0};
-  const huff_decode *t = &node;
-  uint8_t c;
-
-  /* We use the decoding algorithm described in
-     http://graphics.ics.uci.edu/pub/Prefix.pdf */
-  for (; src != end;) {
-    c = *src++;
-    t = &huff_decode_table[t->fstate & 0x1ff][c >> 4];
-    if (t->fstate & HUFF_SYM) {
-      *buf->last++ = t->sym;
-    }
-
-    t = &huff_decode_table[t->fstate & 0x1ff][c & 0xf];
-    if (t->fstate & HUFF_SYM) {
-      *buf->last++ = t->sym;
-    }
-  }
-
-  ctx->fstate = t->fstate;
-
-  if (final && !(ctx->fstate & HUFF_ACCEPTED)) {
-    return ERR_HEADER_COMP;
-  }
-
-  return (ssize_t)srclen;
-}
-
-int hd_huff_decode_failure_state(hd_huff_decode_context *ctx) {
-  return ctx->fstate == 0x100;
 }
 
 void hd_inflate_keep_free(hd_inflater *inflater) {
@@ -282,12 +259,12 @@ void hd_inflate_keep_free(hd_inflater *inflater) {
  * in the next call will be stored in |*shift_ptr|) and returns number
  * of bytes processed, or returns -1, indicating decoding error.
  */
-static ssize_t decode_length(uint32_t *res, size_t *shift_ptr, int *fin,
-                             uint32_t initial, size_t shift, const uint8_t *in,
-                             const uint8_t *last, size_t prefix) {
-  uint32_t k = (uint8_t)((1 << prefix) - 1);
-  uint32_t n = initial;
-  const uint8_t *start = in;
+static ssize_t decode_length(u32 *res, size_t *shift_ptr, int *fin,
+                             u32 initial, size_t shift, const u8 *in,
+                             const u8 *last, size_t prefix) {
+  u32 k = (u8)((1 << prefix) - 1);
+  u32 n = initial;
+  const u8 *start = in;
 
   *shift_ptr = 0;
   *fin = 0;
@@ -308,7 +285,7 @@ static ssize_t decode_length(uint32_t *res, size_t *shift_ptr, int *fin,
   }
 
   for (; in != last; ++in, shift += 7) {
-    uint32_t add = *in & 0x7f;
+    u32 add = *in & 0x7f;
 
     if (shift >= 32) {
       DEBUGF("inflate: shift exponent overflow\n");
@@ -360,14 +337,14 @@ static ssize_t decode_length(uint32_t *res, size_t *shift_ptr, int *fin,
  *   Integer decoding failed
  */
 static ssize_t hd_inflate_read_len(hd_inflater *inflater, int *rfin,
-                                   const uint8_t *in, const uint8_t *last,
+                                   const u8 *in, const u8 *last,
                                    size_t prefix, size_t maxlen) {
   ssize_t rv;
-  uint32_t out;
+  u32 out;
 
   *rfin = 0;
 
-  rv = decode_length(&out, &inflater->shift, rfin, (uint32_t)inflater->left,
+  rv = decode_length(&out, &inflater->shift, rfin, (u32)inflater->left,
                      inflater->shift, in, last, prefix);
 
   if (rv == -1) {
@@ -389,7 +366,10 @@ static ssize_t hd_inflate_read_len(hd_inflater *inflater, int *rfin,
 }
 
 hd_nv hd_table_get(hd_context *context, size_t idx) {
-  assert(INDEX_RANGE_VALID(context, idx));
+  // assert(INDEX_RANGE_VALID(context, idx));
+	if (!INDEX_RANGE_VALID(context, idx)) {
+		DEBUGF("\tWARN: invalid index range.\n");
+	}
   if (idx >= STATIC_TABLE_LENGTH) {
     DEBUGF("\tWARN: Index out of static table range, using dynamic table.\n");
     return hd_table_get(context, 1);
@@ -417,7 +397,7 @@ static void hd_inflate_commit_indexed(hd_inflater *inflater,
 }
 
 int rcbuf_new(rcbuf **rcbuf_ptr, size_t size) {
-  uint8_t *p;
+  u8 *p;
 
   p = default_malloc(sizeof(rcbuf) + size);
 
@@ -448,8 +428,8 @@ int rcbuf_new(rcbuf **rcbuf_ptr, size_t size) {
  *   Huffman decoding failed
  */
 static ssize_t hd_inflate_read_huff(hd_inflater *inflater,
-                                    buf *buf, const uint8_t *in,
-                                    const uint8_t *last) {
+                                    buf *buf, const u8 *in,
+                                    const u8 *last) {
   ssize_t readlen;
   int fin = 0;
   if ((size_t)(last - in) >= inflater->left) {
@@ -485,7 +465,7 @@ static ssize_t hd_inflate_read_huff(hd_inflater *inflater,
  *   Header decompression failed
  */
 static ssize_t hd_inflate_read(hd_inflater *inflater, buf *buf,
-                               const uint8_t *in, const uint8_t *last) {
+                               const u8 *in, const u8 *last) {
   size_t len = BPF_MIN((size_t)(last - in), inflater->left);
 
 	if (len > 0) {
@@ -511,7 +491,6 @@ static ssize_t hd_inflate_read(hd_inflater *inflater, buf *buf,
 static int hd_inflate_commit_newname(hd_inflater *inflater,
                                      hd_nv *nv_out) {
   hd_nv nv;
-  int rv;
 
   if (inflater->no_index) {
     nv.flags = NV_FLAG_NO_INDEX;
@@ -554,7 +533,6 @@ static int hd_inflate_commit_newname(hd_inflater *inflater,
 static int hd_inflate_commit_indname(hd_inflater *inflater,
                                      hd_nv *nv_out) {
   hd_nv nv;
-  int rv;
 
   nv = hd_table_get(&inflater->ctx, inflater->index);
 
@@ -585,7 +563,6 @@ static int hd_inflate_commit_indname(hd_inflater *inflater,
 }
 
 static int hd_context_init(hd_context *context) {
-  int rv;
   context->bad = 0;
   context->hd_table_bufsize_max = 1 << 12;  // HD_DEFAULT_MAX_BUFFER_SIZE;
 	context->hd_table_len = 0;
@@ -600,7 +577,7 @@ static inline int memeq(const void *s1, const void *s2, size_t n) {
   return memcmp(s1, s2, n) == 0;
 }
 
-static int32_t lookup_token(const uint8_t *name, size_t namelen) {
+int32_t lookup_token(const u8 *name, size_t namelen) {
   switch (namelen) {
   case 2:
     switch (name[1]) {
@@ -1027,11 +1004,11 @@ int hd_inflate_new(hd_inflater **inflater_ptr) {
 }
 
 ssize_t hd_inflate_hd_nv(hd_inflater *inflater, hd_nv *nv_out,
-                         int *inflate_flags, const uint8_t *in, size_t inlen,
+                         int *inflate_flags, const u8 *in, size_t inlen,
                          int in_final) {
   ssize_t rv = 0;
-  const uint8_t *first = in;
-  const uint8_t *last = in + inlen;
+  const u8 *first = in;
+  const u8 *last = in + inlen;
   int rfin = 0;
   int busy = 0;
 
@@ -1359,7 +1336,7 @@ ssize_t hd_inflate_hd_nv(hd_inflater *inflater, hd_nv *nv_out,
     }
   }
 
-  assert(in == last);
+  // assert(in == last);
 
   DEBUGF("inflatehd: all input bytes were processed\n");
 
@@ -1394,7 +1371,7 @@ fail:
   return rv;
 }
 
-ssize_t inflate_hd_block(hd_inflater* inflater, const uint8_t *in,
+ssize_t inflate_hd_block(hd_inflater* inflater, const u8 *in,
                          size_t inlen) {
 
   for (;;) {
@@ -1406,25 +1383,23 @@ ssize_t inflate_hd_block(hd_inflater* inflater, const uint8_t *in,
     rv = hd_inflate_hd_nv(inflater, &nv, &inflate_flags, in, inlen, 1);
 
     if (rv < 0) {
-      fprintf(stderr, "inflate failed with error code %zd", rv);
+      DEBUGF("inflate failed with error code %zd", rv);
       return rv;
     }
 
     proclen = (size_t)rv;
-    printf("proclen=%lu,inlen=%lu\n", proclen, inlen);
+    DEBUGF("proclen=%lu,inlen=%lu\n", proclen, inlen);
 
     in += proclen;
     inlen -= proclen;
 
     if (inlen == 0) {
-      printf("dynamic table size: %zu\n", (&inflater->ctx)->hd_table_len);
+      DEBUGF("dynamic table size: %zu\n", (&inflater->ctx)->hd_table_len);
     }
 
     if (inflate_flags & HD_INFLATE_EMIT) {
-      fwrite(nv.name->base, 1, nv.name->len, stderr);
-      fprintf(stderr, ": ");
-      fwrite(nv.value->base, 1, nv.value->len, stderr);
-      fprintf(stderr, "\n");
+      DEBUGF("name=%s, namelen=%lu, value=%s, valuelen=%lu",
+			       nv.name->base, nv.name->len, nv.value->base, nv.value->len);
     }
 
     if (inflate_flags & HD_INFLATE_FINAL) {
@@ -1438,10 +1413,326 @@ ssize_t inflate_hd_block(hd_inflater* inflater, const uint8_t *in,
     }
   }
 
-  return EXIT_SUCCESS;
+  return 0;
 }
 
-int kmesh_parse_recv(hd_inflater* inflater, const uint8_t *in, size_t inlen) {
-	/* WIP */
-	return 1;
+static const u8 static_in[] = {0};
+
+int kmesh_parse_recv(hd_inflater* inflater, const u8 *in, size_t inlen) {
+  http2_frame frame;
+	/* todo: deal with client magic */
+  inbound_state frame_state = IB_READ_HEAD;
+  bpf_memset(&frame, 0, sizeof(http2_frame));
+
+  size_t payloadleft;
+  size_t padlen;
+
+  const u8 *first, *last;
+  size_t readlen;
+  int rv;
+  int busy;
+	payloadleft = 0;
+	padlen = 0;
+	rv = 0;
+	busy = 0;
+
+  if (in == NULL) {
+    // assert(inlen == 0);
+		if (inlen != 0) {
+			DEBUGF("\tWARN: empty input\n");
+		}
+    in = static_in;
+  }
+
+  first = in;
+  last = in + inlen;
+
+  for (;;) {
+    switch (frame_state) {
+    case IB_READ_CLIENT_MAGIC:
+      DEBUGF("recv: [IB_READ_CLIENT_MAGIC]\n");
+      /* todo */
+      break;
+
+    case IB_READ_FIRST_SETTINGS:
+      DEBUGF("recv: [IB_READ_FIRST_SETTINGS]\n");
+      readlen = last - in;
+      in += readlen;
+			/* todo */
+      break;
+
+    /* Fall through */
+    case IB_READ_HEAD: {
+      DEBUGF("recv: [IB_READ_HEAD]\n");
+
+      frame_hd *hd = &frame.hd;
+			control_frame *ctrl = &frame.ctrl;
+
+      // unpack frame header
+      hd->length = get_uint32(&in[0]) >> 8;
+      hd->type = in[3];
+      hd->flags = in[4];
+      hd->stream_id = get_uint32(&in[5]) & STREAM_ID_MASK;
+      hd->reserved = 0;
+
+      in += FRAME_HDLEN;
+
+      // payload not including head, including Exclusive flag and stream dependency
+      payloadleft = hd->length;
+      DEBUGF("recv: payloadlen=%zu, type=%u, flags=0x%02x, stream_id=%d\n",
+             hd->length, hd->type, hd->flags, hd->stream_id);
+
+      // todo: deal with oversized header (if length > max_frame_size)
+
+      switch (hd->type) {
+      case DATA:
+        DEBUGF("recv: DATA\n");
+				in += payloadleft;
+        /* todo */
+        break;
+      
+      case HEADERS:
+        DEBUGF("recv: HEADERS\n");
+        hd->flags &=
+            (FLAG_END_STREAM | FLAG_END_HEADERS |
+             FLAG_PADDED | FLAG_PRIORITY);
+        
+        // padding
+        if (hd->flags & FLAG_PADDED) {
+          // todo: handle padding error
+          frame_state = IB_READ_NBYTE;
+          break;
+        } else {
+          DEBUGF("recv: no padding in payload\n");
+        }
+
+        busy = 1;
+
+        frame_state = IB_READ_HEADER_BLOCK;
+
+        break;
+      
+      case PRIORITY:
+        DEBUGF("recv: PRIORITY\n");
+				ctrl->payloadlen = hd->length;
+				in += payloadleft;
+        /* todo */
+        break;
+
+      case RST_STREAM:
+        DEBUGF("recv: RST_STREAM\n");
+      case WINDOW_UPDATE:
+        DEBUGF("recv: WINDOW_UPDATE\n");
+				ctrl->payloadlen = hd->length;
+				in += payloadleft;
+        /* todo */
+        break;
+      
+      case SETTINGS:
+        DEBUGF("recv: SETTINGS\n");
+        hd->flags &= FLAG_ACK;
+				ctrl->payloadlen = hd->length;
+
+        frame_state = IB_READ_SETTINGS;
+
+        busy = 1;
+
+        break;
+
+      case PUSH_PROMISE:
+        DEBUGF("recv: PUSH_PROMISE\n");
+				ctrl->payloadlen = hd->length;
+        /* todo */
+				in += payloadleft;
+        break;
+      
+      case PING:
+        DEBUGF("recv: PING\n");
+				ctrl->payloadlen = hd->length;
+        /* todo */
+				in += payloadleft;
+        break;
+      
+      case GOAWAY:
+        DEBUGF("recv: GOAWAY\n");
+				ctrl->payloadlen = hd->length;
+        /* todo */
+				in += payloadleft;
+        break;
+      
+      case CONTINUATION:
+        DEBUGF("recv: unexpected CONTINUATION\n");
+        return (int)inlen;
+      
+      default:
+        DEBUGF("recv: extension frame\n");
+				ctrl->payloadlen = hd->length;
+        /* todo */
+				in += payloadleft;
+        break;
+      }
+      break;
+    }
+
+    case IB_READ_NBYTE:
+      DEBUGF("recv: [IB_READ_NBYTE]\n");
+
+      readlen = last - in;
+      /* todo: test buffer availability */
+
+      DEBUGF("recv: readlen=%zu, payloadleft=%zu\n", readlen, payloadleft);
+
+      switch (frame.hd.type) {
+      case HEADERS:
+        if (padlen == 0 && (frame.hd.flags & FLAG_PADDED)) {
+          DEBUGF("\tWARN: padding ignored.\n");
+        }
+        busy = 1;
+
+        if (frame_state == IB_IGN_ALL) {
+          return (ssize_t)inlen;
+        }
+
+        frame_state = IB_READ_HEADER_BLOCK;
+
+        break;
+      
+      default:
+        break;
+      }
+      break;
+
+    case IB_READ_HEADER_BLOCK:
+      DEBUGF("recv: [IB_READ_HEADER_BLOCK]\n");
+    case IB_IGN_HEADER_BLOCK:
+      DEBUGF("recv: [IB_IGN_HEADER_BLOCK]\n");
+
+      int final;
+
+      readlen = BPF_MIN((size_t)(last - in), payloadleft);
+
+      DEBUGF("recv: readlen=%zu, payloadleft=%zu\n", readlen,
+             payloadleft - readlen);
+
+      if (readlen == -1) {
+        /* everything is padding */
+        DEBUGF("recv: readlen = -1, everything is padding\n");
+        readlen = 0;
+      }
+
+      final = (frame.hd.flags & FLAG_END_HEADERS) &&  payloadleft == readlen;
+
+      if (readlen > 0 || (readlen == 0 && final)) {
+        DEBUGF("recv: block final=%d\n", final);
+
+        rv = inflate_hd_block(inflater, in, readlen);
+        in += readlen;
+        payloadleft -= readlen;
+      } else {
+        DEBUGF("recv: everything is padding\n");
+        in += readlen;
+        payloadleft -= readlen;
+      }
+
+      if (payloadleft) {
+        break;
+      }
+      
+      if ((frame.hd.flags & FLAG_END_HEADERS) == 0) {  // if END_HEADERS is set
+        in = last;
+        padlen = 0;
+        if (frame_state == IB_READ_HEADER_BLOCK) {
+          frame_state = IB_EXPECT_CONTINUATION;
+        } else {
+          frame_state = IB_IGN_CONTINUATION;
+        }
+      } else {
+        if (frame_state == IB_READ_HEADER_BLOCK) {
+          /* todo: more than 1 header frames */
+        }
+      }
+      
+      /* todo */
+      break;
+    
+    case IB_IGN_PAYLOAD:
+      DEBUGF("recv: [IB_IGN_PAYLOAD]\n");
+      /* todo */
+      break;
+
+    case IB_FRAME_SIZE_ERROR:
+      DEBUGF("recv: [IB_FRAME_SIZE_ERROR]\n");
+      /* todo */
+      return (int)inlen;
+    
+    case IB_READ_SETTINGS:
+      DEBUGF("recv: [IB_READ_SETTINGS]\n");
+      
+      if (frame_state == IB_IGN_ALL) {
+        return (ssize_t)inlen;
+      }
+
+			in += payloadleft;
+
+      break;
+
+    case IB_READ_GOAWAY_DEBUG:
+      DEBUGF("recv: [IB_READ_GOAWAY_DEBUG]\n");
+      /* todo */
+      break;
+
+    case IB_EXPECT_CONTINUATION:
+      DEBUGF("recv: [IB_EXPECT_CONTINUATION]\n");
+    case IB_IGN_CONTINUATION:
+      DEBUGF("recv: [IB_IGN_CONTINUATION]\n");
+      /* todo */
+      break;
+
+    case IB_READ_PAD_DATA:
+      DEBUGF("recv: [IB_READ_PAD_DATA]\n");
+      /* todo */
+      break;
+    
+    case IB_READ_DATA:
+      DEBUGF("recv: [IB_READ_DATA]\n");
+      /* todo */
+      break;
+    
+    case IB_IGN_DATA:
+      DEBUGF("recv: [IB_IGN_DATA]\n");
+      /* todo */
+      break;
+    
+    case IB_IGN_ALL:
+      DEBUGF("recv: [IB_IGN_ALL]\n");
+      return (ssize_t)inlen;
+    
+    case IB_READ_EXTENSION_PAYLOAD:
+      DEBUGF("recv: [IB_READ_EXTENSION_PAYLOAD]\n");
+      /* todo */
+      break;
+    
+    case IB_READ_ALTSVC_PAYLOAD:
+      DEBUGF("recv: [IB_READ_ALTSVC_PAYLOAD]\n");
+      /* todo */
+      break;
+    
+    case IB_READ_ORIGIN_PAYLOAD:
+      DEBUGF("recv: [IB_READ_ORIGIN_PAYLOAD]\n");
+      /* todo */
+      break;
+
+    default:
+      break;
+    }  // switch (frame_state)
+
+    if (!busy && in == last) {
+      break;
+    }
+
+    busy = 0;
+  }  // for (;;)
+
+  return rv;
+
 }

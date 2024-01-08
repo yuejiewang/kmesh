@@ -32,7 +32,7 @@ extern const huff_decode huff_decode_table[][16];
 
 void hd_huff_decode_context_init(hd_huff_decode_context *ctx);
 ssize_t hd_huff_decode(hd_huff_decode_context *ctx,
-                       buf *buf, const uint8_t *src,
+                       buf *buf, const u8 *src,
                        size_t srclen, int final);
 int hd_huff_decode_failure_state(hd_huff_decode_context *ctx);
 

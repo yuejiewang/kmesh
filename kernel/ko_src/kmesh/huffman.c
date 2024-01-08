@@ -5,12 +5,12 @@ void hd_huff_decode_context_init(hd_huff_decode_context *ctx) {
 }
 
 ssize_t hd_huff_decode(hd_huff_decode_context *ctx,
-                       buf *buf, const uint8_t *src,
+                       buf *buf, const u8 *src,
                        size_t srclen, int final) {
-  const uint8_t *end = src + srclen;
+  const u8 *end = src + srclen;
   huff_decode node = {ctx->fstate, 0};
   const huff_decode *t = &node;
-  uint8_t c;
+  u8 c;
 
   /* We use the decoding algorithm described in
      http://graphics.ics.uci.edu/pub/Prefix.pdf */
