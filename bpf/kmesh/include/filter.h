@@ -165,16 +165,25 @@ int filter_manager(ctx_buff_t *ctx)
 				switch (frame_type) {
 				case 0:  /* DATA frame */
 					BPF_LOG(DEBUG, FILTER, "http2.0 recv data frame");
-					/* todo:  get ep_identity from map_of_id2ep */
-					void *ep_identity = NULL;
 					Core__SocketAddress *sock_addr = NULL;
-					sock_addr = cluster_get_ep_sock_addr(ep_identity);
+					char key_id[11] = {'_', 'S', 'T', 'R', 'E', 'A', 'M', '_', 'I', 'D', '\0'};
+					struct bpf_mem_ptr *stream_id_ptr = NULL;
+					unsigned int stream_id;
+					stream_id_ptr = (struct bpf_mem_ptr *)bpf_get_msg_header_element(key_id);
+					if (!stream_id_ptr) {
+						BPF_LOG(ERR, FILTER, "http2.0 cannot get stream_id\n");
+						ret = -1;
+						break;
+					}
+					stream_id = *(unsigned int *)(stream_id_ptr->ptr);
+					sock_addr = kmesh_map_lookup_elem(&map_of_id2ep, (void *)&stream_id);
 					if (!sock_addr) {
-						BPF_LOG(ERR, CLUSTER, "ep get sock addr failed, %ld\n", (__s64)ep_identity);
+						BPF_LOG(ERR, FILTER, "ep get sock addr failed\n");
 						ret = -EAGAIN;
+						break;
 					}
 
-					BPF_LOG(INFO, CLUSTER, "loadbalance to addr=[%u:%u]\n",
+					BPF_LOG(INFO, FILTER, "loadbalance to addr=[%u:%u]\n",
 							sock_addr->ipv4, sock_addr->port);
 					SET_CTX_ADDRESS(ctx, sock_addr);
 

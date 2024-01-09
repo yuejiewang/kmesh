@@ -69,7 +69,7 @@ struct {
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__uint(key_size, sizeof(unsigned int));  // stream_id
-	__uint(value_size, sizeof(__u64));  // endpoint - ep_identity
+	__uint(value_size, sizeof(Core__SocketAddress));  // endpoint - socket addr
 	__uint(max_entries, MAX_CONCURRENT_STREAMS);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } map_of_id2ep SEC(".maps");
@@ -324,8 +324,7 @@ static inline int cluster_handle_loadbalance(Cluster__Cluster *cluster, address_
 	stream_id_ptr = (struct bpf_mem_ptr *)bpf_get_msg_header_element(key_id);
 	if (stream_id_ptr) {
 		stream_id = *(unsigned int *)(stream_id_ptr->ptr);
-
-		kmesh_map_update_elem(&map_of_id2ep, (void *)(&stream_id), (void *)ep_identity);
+		kmesh_map_update_elem(&map_of_id2ep, (void *)(&stream_id), (void *)sock_addr);
 	}
 	
 	return 0;
