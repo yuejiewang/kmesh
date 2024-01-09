@@ -19,6 +19,7 @@
 #ifndef __KMESH_FILTER_H__
 #define __KMESH_FILTER_H__
 
+#include "cluster.h"
 #include "tcp_proxy.h"
 #include "tail_call.h"
 #include "bpf_log.h"
@@ -28,12 +29,15 @@
 #include "filter/http_connection_manager.pb-c.h"
 
 /* add a map for stream_id -> endpoint */
-// struct {
-// 	__uint(type, BPF_MAP_TYPE_HASH);
-// 	__uint(key_size, sizeof(int));  // stream_id
-// 	__uint(value_size, sizeof(struct cluster_endpoints));  // endpoint
-// 	__uint(max_entries, 1);
-// } map_of_router_config SEC(".maps");
+#define MAX_CONCURRENT_STREAMS 8192
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(key_size, sizeof(int));  // stream_id
+	__uint(value_size, sizeof(__u64));  // endpoint - ep_identity
+	__uint(max_entries, MAX_CONCURRENT_STREAMS);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+} map_of_id2ep SEC(".maps");
 
 static inline int filter_match_check(const Listener__Filter *filter, const address_t *addr, const ctx_buff_t *ctx)
 {
@@ -172,6 +176,19 @@ int filter_manager(ctx_buff_t *ctx)
 				switch (frame_type) {
 				case 0:  /* DATA frame */
 					BPF_LOG(DEBUG, FILTER, "http2.0 recv data frame");
+					/* todo:  get ep_identity from map_of_id2ep */
+					void *ep_identity = NULL;
+					Core__SocketAddress *sock_addr = NULL;
+					sock_addr = cluster_get_ep_sock_addr(ep_identity);
+					if (!sock_addr) {
+						BPF_LOG(ERR, CLUSTER, "ep get sock addr failed, %ld\n", (__s64)ep_identity);
+						ret = -EAGAIN;
+					}
+
+					BPF_LOG(INFO, CLUSTER, "loadbalance to addr=[%u:%u]\n",
+							sock_addr->ipv4, sock_addr->port);
+					SET_CTX_ADDRESS(ctx, sock_addr);
+
 					break;
 				
 				case 1:  /* HEADERS frame */
@@ -185,6 +202,7 @@ int filter_manager(ctx_buff_t *ctx)
 						break;
 					}
 					ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
+					/* todo: update map_of_id2ep */
 					break;
 				
 				default: /* control frames */
