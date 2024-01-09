@@ -28,17 +28,6 @@
 #include "filter/tcp_proxy.pb-c.h"
 #include "filter/http_connection_manager.pb-c.h"
 
-/* add a map for stream_id -> endpoint */
-#define MAX_CONCURRENT_STREAMS 8192
-
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(key_size, sizeof(int));  // stream_id
-	__uint(value_size, sizeof(__u64));  // endpoint - ep_identity
-	__uint(max_entries, MAX_CONCURRENT_STREAMS);
-	__uint(map_flags, BPF_F_NO_PREALLOC);
-} map_of_id2ep SEC(".maps");
-
 static inline int filter_match_check(const Listener__Filter *filter, const address_t *addr, const ctx_buff_t *ctx)
 {
 	int match = 0;
@@ -170,8 +159,8 @@ int filter_manager(ctx_buff_t *ctx)
 				char key_type[6] = {'_', 'T', 'Y', 'P', 'E', '\0'};
 				struct bpf_mem_ptr *frame_type_ptr = NULL;
 				unsigned char frame_type;
-				frame_type_ptr = bpf_get_msg_header_element(key_type);
-				frame_type = *(unsigned char*)(frame_type_ptr->ptr);
+				frame_type_ptr = (struct bpf_mem_ptr *)bpf_get_msg_header_element(key_type);
+				frame_type = *(unsigned char *)(frame_type_ptr->ptr);
 
 				switch (frame_type) {
 				case 0:  /* DATA frame */
