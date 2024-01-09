@@ -163,14 +163,34 @@ int filter_manager(ctx_buff_t *ctx)
 				}
 				ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
 			} else if (GET_RET_PROTO_TYPE(ret) == PROTO_HTTP_2_0) {
-				http_conn = kmesh_get_ptr_val(filter->http_connection_manager);
+				char key_type[6] = {'_', 'T', 'Y', 'P', 'E', '\0'};
+				struct bpf_mem_ptr *frame_type_ptr = NULL;
+				unsigned char frame_type;
+				frame_type_ptr = bpf_get_msg_header_element(key_type);
+				frame_type = *(unsigned char*)(frame_type_ptr->ptr);
+
+				switch (frame_type) {
+				case 0:  /* DATA frame */
+					BPF_LOG(DEBUG, FILTER, "http2.0 recv data frame");
+					break;
 				
-				if (!http_conn) {
-					BPF_LOG(ERR, FILTER, "get http_conn failed\n");
-					ret = -1;
+				case 1:  /* HEADERS frame */
+					BPF_LOG(DEBUG, FILTER, "http2.0 recv headers frame");
+
+					http_conn = kmesh_get_ptr_val(filter->http_connection_manager);
+
+					if (!http_conn) {
+						BPF_LOG(ERR, FILTER, "get http_conn failed\n");
+						ret = -1;
+						break;
+					}
+					ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
+					break;
+				
+				default: /* control frames */
+					BPF_LOG(DEBUG, FILTER, "http2.0 receive control frame");
 					break;
 				}
-				ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
 			} else {
 				BPF_LOG(DEBUG, FILTER, "http filter manager, only support http1.1/http2.0 this version");
 				break;
