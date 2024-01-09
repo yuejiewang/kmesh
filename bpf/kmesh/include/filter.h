@@ -171,14 +171,14 @@ int filter_manager(ctx_buff_t *ctx)
 					unsigned int stream_id;
 					stream_id_ptr = (struct bpf_mem_ptr *)bpf_get_msg_header_element(key_id);
 					if (!stream_id_ptr) {
-						BPF_LOG(ERR, FILTER, "http2.0 cannot get stream_id\n");
+						BPF_LOG(ERR, FILTER, "http2.0 data frame get stream_id failed\n");
 						ret = -1;
 						break;
 					}
 					stream_id = *(unsigned int *)(stream_id_ptr->ptr);
 					sock_addr = kmesh_map_lookup_elem(&map_of_id2ep, (void *)&stream_id);
 					if (!sock_addr) {
-						BPF_LOG(ERR, FILTER, "ep get sock addr failed\n");
+						BPF_LOG(ERR, FILTER, "http2.0 data frame get sock addr failed\n");
 						ret = -EAGAIN;
 						break;
 					}
@@ -200,7 +200,7 @@ int filter_manager(ctx_buff_t *ctx)
 						break;
 					}
 					ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
-					/* todo: update map_of_id2ep */
+
 					break;
 				
 				default: /* control frames */
