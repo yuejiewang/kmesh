@@ -135,10 +135,10 @@ static inline Route__VirtualHost *virtual_host_match(Route__RouteConfiguration *
 		path = bpf_get_msg_header_element(path_key);
 		if (scheme && auth && path) {
 			BPF_LOG(DEBUG, ROUTER_CONFIG, "http2.0 header field found, this is a place holder for http2.0 uri matching\n");
+		} else {
+			BPF_LOG(ERR, ROUTER_CONFIG, "failed to get URI in msg\n");
 			return NULL;
 		}
-		BPF_LOG(ERR, ROUTER_CONFIG, "failed to get URI in msg\n");
-		return NULL;
 	}
 
 	for (i = 0; i < KMESH_PER_VIRT_HOST_NUM; i++) {
@@ -156,6 +156,12 @@ static inline Route__VirtualHost *virtual_host_match(Route__RouteConfiguration *
 		}
 
 		if (virtual_host_match_check(virt_host, addr, ctx, uri))
+			return virt_host;
+		
+		if (virtual_host_match_check(virt_host, addr, ctx, auth))
+			return virt_host;
+
+		if (virtual_host_match_check(virt_host, addr, ctx, path))
 			return virt_host;
 	}
 	// allow_any as the default virt_host
