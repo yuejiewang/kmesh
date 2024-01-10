@@ -160,7 +160,12 @@ int filter_manager(ctx_buff_t *ctx)
 				struct bpf_mem_ptr *frame_type_ptr = NULL;
 				unsigned char frame_type;
 				frame_type_ptr = (struct bpf_mem_ptr *)bpf_get_msg_header_element(key_type);
-				frame_type = *(unsigned char *)(frame_type_ptr->ptr);
+				if (!frame_type_ptr) {
+					BPF_LOG(ERR, FILTER, "http2.0 get frame_type error\n");
+					ret = -1;
+					break;
+				}
+				frame_type = (unsigned char)(frame_type_ptr->ptr & 0xff);
 
 				switch (frame_type) {
 				case 0:  /* DATA frame */
@@ -175,7 +180,7 @@ int filter_manager(ctx_buff_t *ctx)
 						ret = -1;
 						break;
 					}
-					stream_id = *(unsigned int *)(stream_id_ptr->ptr);
+					stream_id = (unsigned int)(stream_id_ptr->ptr);
 					sock_addr = kmesh_map_lookup_elem(&map_of_id2ep, (void *)&stream_id);
 					if (!sock_addr) {
 						BPF_LOG(ERR, FILTER, "http2.0 data frame get sock addr failed\n");
