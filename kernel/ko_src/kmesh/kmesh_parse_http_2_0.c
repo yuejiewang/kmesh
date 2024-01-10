@@ -1110,6 +1110,10 @@ int kmesh_parse_recv(hd_inflater* inflater, const u8 *in, size_t inlen) {
 
     /* Fall through */
     case IB_READ_HEAD: {
+      struct kmesh_data_node *node_type = new_kmesh_data_node(6);
+      struct kmesh_data_node *node_flags = new_kmesh_data_node(7);
+      struct kmesh_data_node *node_stream_id = new_kmesh_data_node(11);    
+
       DEBUGF("recv: [IB_READ_HEAD]\n");
 
       frame_hd *hd = &frame.hd;
@@ -1123,22 +1127,22 @@ int kmesh_parse_recv(hd_inflater* inflater, const u8 *in, size_t inlen) {
       hd->reserved = 0;
 
       /* insert frame header info into rbtree */
-      struct kmesh_data_node *node_type = new_kmesh_data_node(6);
-      node_type->value.ptr = &(hd->type);
+      // node_type->value.ptr = &(hd->type);
+      memcpy((u8 *)(&node_type->value.ptr) + 3, &(hd->type), sizeof(u8));
       node_type->value.size = 1;
       (void)strncpy(node_type->keystring, "_TYPE", 6);
       if (!kmesh_protocol_data_insert(node_type))
         delete_kmesh_data_node(&node_type);
         
-      struct kmesh_data_node *node_flags = new_kmesh_data_node(7);
-      node_flags->value.ptr = &(hd->flags);
+      // node_flags->value.ptr = &(hd->flags);
+      memcpy((u8 *)(&node_flags->value.ptr) + 3, &(hd->flags), sizeof(u8));
       node_flags->value.size = 1;
       (void)strncpy(node_flags->keystring, "_FLAGS", 7);
       if (!kmesh_protocol_data_insert(node_flags))
         delete_kmesh_data_node(&node_flags);
 
-      struct kmesh_data_node *node_stream_id = new_kmesh_data_node(11);    
-      node_stream_id->value.ptr = &(hd->stream_id);
+      // node_stream_id->value.ptr = &(hd->stream_id);
+      memcpy((u32 *)(&node_stream_id->value.ptr), &(hd->stream_id), sizeof(u32));
       node_stream_id->value.size = 4;
       (void)strncpy(node_stream_id->keystring, "_STREAM_ID", 11);
       if (!kmesh_protocol_data_insert(node_stream_id))
