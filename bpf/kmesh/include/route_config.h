@@ -55,8 +55,8 @@ static inline struct bpf_mem_ptr *get_uri_http_2_0() {
 	auth = bpf_get_msg_header_element(auth_key);
 	path = bpf_get_msg_header_element(path_key);
 
-	/* todo: return uri */
-	return NULL;
+	/* todo: full uri match for http2.0 */
+	return auth;
 }
 
 static inline int virtual_host_match_check(Route__VirtualHost *virt_host,
