@@ -56,15 +56,16 @@ int __init kmesh_register_http_2_0_init(void)
 	return 0;
 }
 
+/* todo: fix type convert and mem func */
 static inline u16 get_uint16(const u8 *data) {
   u16 n;
-  memcpy(&n, data, sizeof(u16));
+  default_memcpy(&n, data, sizeof(u16));
   return ntohs(n);
 }
 
 static inline u32 get_uint32(const u8 *data) {
   u32 n;
-  memcpy(&n, data, sizeof(u32));
+  default_memcpy(&n, data, sizeof(u32));
   return ntohl(n);
 }
 
@@ -82,6 +83,10 @@ static inline void *default_calloc(size_t nmemb, size_t size) {
 
 static inline void *default_realloc(void *ptr, size_t size) {
   return krealloc(ptr, size, GFP_KERNEL);
+}
+
+static inline void *default_memcpy(void *dst, void *src, size_t size) {
+  return memcpy(dst, src, size);
 }
 
 /*
@@ -448,7 +453,7 @@ static ssize_t hd_inflate_read(hd_inflater *inflater, buf *buf,
   size_t len = BPF_MIN((size_t)(last - in), inflater->left);
 
 	if (len > 0) {
-		memcpy(buf->last, in, len);
+		default_memcpy(buf->last, in, len);
 	}
 	buf->last += len;
 
@@ -1128,21 +1133,21 @@ int kmesh_parse_recv(hd_inflater* inflater, const u8 *in, size_t inlen) {
 
       /* insert frame header info into rbtree */
       // node_type->value.ptr = &(hd->type);
-      memcpy((u8 *)(&node_type->value.ptr) + 3, &(hd->type), sizeof(u8));
+      default_memcpy((u8 *)(&node_type->value.ptr) + 3, &(hd->type), sizeof(u8));
       node_type->value.size = 1;
       (void)strncpy(node_type->keystring, "_TYPE", 6);
       if (!kmesh_protocol_data_insert(node_type))
         delete_kmesh_data_node(&node_type);
         
       // node_flags->value.ptr = &(hd->flags);
-      memcpy((u8 *)(&node_flags->value.ptr) + 3, &(hd->flags), sizeof(u8));
+      default_memcpy((u8 *)(&node_flags->value.ptr) + 3, &(hd->flags), sizeof(u8));
       node_flags->value.size = 1;
       (void)strncpy(node_flags->keystring, "_FLAGS", 7);
       if (!kmesh_protocol_data_insert(node_flags))
         delete_kmesh_data_node(&node_flags);
 
       // node_stream_id->value.ptr = &(hd->stream_id);
-      memcpy((u32 *)(&node_stream_id->value.ptr), &(hd->stream_id), sizeof(u32));
+      default_memcpy((u32 *)(&node_stream_id->value.ptr), &(hd->stream_id), sizeof(u32));
       node_stream_id->value.size = 4;
       (void)strncpy(node_stream_id->keystring, "_STREAM_ID", 11);
       if (!kmesh_protocol_data_insert(node_stream_id))
