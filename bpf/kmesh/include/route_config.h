@@ -42,6 +42,23 @@ static inline Route__RouteConfiguration *map_lookup_route_config(const char *rou
 	return kmesh_map_lookup_elem(&map_of_router_config, route_name);
 }
 
+static inline struct bpf_mem_ptr *get_uri_http_2_0() {
+	/* reconstruct uri from :sheme, :authority, :path */
+	char scheme_key[8] = {':', 's', 'c', 'h', 'e', 'm', 'e', '\0'};
+	char auth_key[11] = {':', 'a', 'u', 't', 'h', 'o', 'r', 'i', 't', 'y', '\0'};
+	char path_key[6] = {':', 'p', 'a', 't', 'h', '\0'};
+	struct bpf_mem_ptr *scheme;
+	struct bpf_mem_ptr *auth;
+	struct bpf_mem_ptr *path;
+
+	scheme = bpf_get_msg_header_element(scheme_key);
+	auth = bpf_get_msg_header_element(auth_key);
+	path = bpf_get_msg_header_element(path_key);
+
+	/* todo: full uri match for http2.0 */
+	return auth;
+}
+
 static inline int virtual_host_match_check(Route__VirtualHost *virt_host,
 											address_t *addr, ctx_buff_t *ctx, struct bpf_mem_ptr *uri)
 {
@@ -121,8 +138,14 @@ static inline Route__VirtualHost *virtual_host_match(Route__RouteConfiguration *
 	
 	uri = bpf_get_msg_header_element(uri_key);
 	if (!uri) {
-		BPF_LOG(ERR, ROUTER_CONFIG, "failed to get URI in msg\n");
-		return NULL;
+		BPF_LOG(DEBUG, ROUTER_CONFIG, "check for http2.0 header fields\n");
+		uri = get_uri_http_2_0();
+		if (uri) {
+			BPF_LOG(DEBUG, ROUTER_CONFIG, "get uri for http2.0\n");
+		} else {
+			BPF_LOG(ERR, ROUTER_CONFIG, "failed to get URI in msg\n");
+			return NULL;
+		}
 	}
 
 	for (i = 0; i < KMESH_PER_VIRT_HOST_NUM; i++) {

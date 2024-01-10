@@ -19,6 +19,7 @@
 #ifndef __KMESH_FILTER_H__
 #define __KMESH_FILTER_H__
 
+#include "cluster.h"
 #include "tcp_proxy.h"
 #include "tail_call.h"
 #include "bpf_log.h"
@@ -26,7 +27,6 @@
 #include "listener/listener.pb-c.h"
 #include "filter/tcp_proxy.pb-c.h"
 #include "filter/http_connection_manager.pb-c.h"
-
 
 static inline int filter_match_check(const Listener__Filter *filter, const address_t *addr, const ctx_buff_t *ctx)
 {
@@ -142,19 +142,81 @@ int filter_manager(ctx_buff_t *ctx)
 	switch (filter->config_type_case) {
 #ifndef CGROUP_SOCK_MANAGE
 		case LISTENER__FILTER__CONFIG_TYPE_HTTP_CONNECTION_MANAGER:
-			http_conn = kmesh_get_ptr_val(filter->http_connection_manager);
+			/* match and handle MAGIC string */
+			
 			ret = bpf_parse_header_msg(ctx_val->msg);
-			if (GET_RET_PROTO_TYPE(ret) != PROTO_HTTP_1_1) {
-				BPF_LOG(DEBUG, FILTER, "http filter manager,only support http1.1 this version");
-				break;
-			}
 
-			if (!http_conn) {
-				BPF_LOG(ERR, FILTER, "get http_conn failed\n");
-				ret = -1;
+			if (GET_RET_PROTO_TYPE(ret) == PROTO_HTTP_1_1) {
+				http_conn = kmesh_get_ptr_val(filter->http_connection_manager);
+				
+				if (!http_conn) {
+					BPF_LOG(ERR, FILTER, "get http_conn failed\n");
+					ret = -1;
+					break;
+				}
+				ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
+			} else if (GET_RET_PROTO_TYPE(ret) == PROTO_HTTP_2_0) {
+				char key_type[6] = {'_', 'T', 'Y', 'P', 'E', '\0'};
+				struct bpf_mem_ptr *frame_type_ptr = NULL;
+				unsigned char frame_type;
+				frame_type_ptr = (struct bpf_mem_ptr *)bpf_get_msg_header_element(key_type);
+				if (!frame_type_ptr) {
+					BPF_LOG(ERR, FILTER, "http2.0 get frame_type error\n");
+					ret = -1;
+					break;
+				}
+				frame_type = (unsigned char)(frame_type_ptr->ptr & 0xff);
+
+				switch (frame_type) {
+				case 0:  /* DATA frame */
+					BPF_LOG(DEBUG, FILTER, "http2.0 recv data frame");
+					Core__SocketAddress *sock_addr = NULL;
+					char key_id[11] = {'_', 'S', 'T', 'R', 'E', 'A', 'M', '_', 'I', 'D', '\0'};
+					struct bpf_mem_ptr *stream_id_ptr = NULL;
+					unsigned int stream_id;
+					stream_id_ptr = (struct bpf_mem_ptr *)bpf_get_msg_header_element(key_id);
+					if (!stream_id_ptr) {
+						BPF_LOG(ERR, FILTER, "http2.0 data frame get stream_id failed\n");
+						ret = -1;
+						break;
+					}
+					stream_id = (unsigned int)(stream_id_ptr->ptr);
+					sock_addr = kmesh_map_lookup_elem(&map_of_id2ep, (void *)&stream_id);
+					if (!sock_addr) {
+						BPF_LOG(ERR, FILTER, "http2.0 data frame get sock addr failed\n");
+						ret = -EAGAIN;
+						break;
+					}
+
+					BPF_LOG(INFO, FILTER, "loadbalance to addr=[%u:%u]\n",
+							sock_addr->ipv4, sock_addr->port);
+					SET_CTX_ADDRESS(ctx, sock_addr);
+
+					break;
+				
+				case 1:  /* HEADERS frame */
+					BPF_LOG(DEBUG, FILTER, "http2.0 recv headers frame");
+
+					http_conn = kmesh_get_ptr_val(filter->http_connection_manager);
+
+					if (!http_conn) {
+						BPF_LOG(ERR, FILTER, "get http_conn failed\n");
+						ret = -1;
+						break;
+					}
+					ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
+
+					break;
+				
+				default: /* control frames */
+					BPF_LOG(DEBUG, FILTER, "http2.0 receive control frame");
+					break;
+				}
+			} else {
+				BPF_LOG(DEBUG, FILTER, "http filter manager, only support http1.1/http2.0 this version");
 				break;
 			}
-			ret = handle_http_connection_manager(http_conn, &addr, ctx, ctx_val->msg);
+			
 			break;
 #endif
 		case LISTENER__FILTER__CONFIG_TYPE_TCP_PROXY:

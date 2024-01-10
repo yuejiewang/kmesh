@@ -63,6 +63,17 @@ struct {
 	__uint(max_entries, 1);
 } map_of_cluster_eps_data SEC(".maps");
 
+/* add a map for stream_id -> endpoint */
+#define MAX_CONCURRENT_STREAMS 8192
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(key_size, sizeof(unsigned int));  // stream_id
+	__uint(value_size, sizeof(Core__SocketAddress));  // endpoint - socket addr
+	__uint(max_entries, MAX_CONCURRENT_STREAMS);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+} map_of_id2ep SEC(".maps");
+
 static inline Cluster__Cluster *map_lookup_cluster_eps_data()
 {
 	int location = 0;
@@ -305,6 +316,17 @@ static inline int cluster_handle_loadbalance(Cluster__Cluster *cluster, address_
 	BPF_LOG(INFO, CLUSTER, "cluster=\"%s\", loadbalance to addr=[%u:%u]\n",
 			name, sock_addr->ipv4, sock_addr->port);
 	SET_CTX_ADDRESS(ctx, sock_addr);
+	
+	/* store (stream_id, ep) to map_of_id2ep */
+	char key_id[11] = {'_', 'S', 'T', 'R', 'E', 'A', 'M', '_', 'I', 'D', '\0'};
+	struct bpf_mem_ptr *stream_id_ptr = NULL;
+	unsigned int stream_id;
+	stream_id_ptr = (struct bpf_mem_ptr *)bpf_get_msg_header_element(key_id);
+	if (stream_id_ptr) {
+		stream_id = *(unsigned int *)(stream_id_ptr->ptr);
+		kmesh_map_update_elem(&map_of_id2ep, (void *)(&stream_id), (void *)sock_addr);
+	}
+	
 	return 0;
 }
 
